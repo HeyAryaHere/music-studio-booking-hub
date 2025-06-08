@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Mail, CreditCard, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, User, Mail, CreditCard, CheckCircle, Plus, Minus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,8 +21,8 @@ interface TimeSlot {
 
 interface BookingDetails {
   date: string;
-  time: string;
-  duration: number;
+  timeSlots: string[];
+  isFullDay: boolean;
   service: string;
   price: number;
   name: string;
@@ -32,15 +32,15 @@ interface BookingDetails {
 
 const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [selectedTimeSlots, setSelectedTimeSlots] = useState<string[]>([]);
+  const [isFullDay, setIsFullDay] = useState<boolean>(false);
   const [selectedService, setSelectedService] = useState<string>('');
-  const [duration, setDuration] = useState<number>(1);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [step, setStep] = useState<number>(1);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails>({
     date: '',
-    time: '',
-    duration: 1,
+    timeSlots: [],
+    isFullDay: false,
     service: '',
     price: 0,
     name: '',
@@ -51,9 +51,9 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
   const { toast } = useToast();
 
   const services = [
-    { id: 'recording', name: 'Recording Session', price: 75, description: 'Professional recording with engineer' },
-    { id: 'mixing', name: 'Mixing Session', price: 60, description: 'Professional mixing and production' },
-    { id: 'rehearsal', name: 'Rehearsal Space', price: 45, description: 'Band practice and rehearsal' }
+    { id: 'recording', name: 'Recording Session', price: 75, description: 'Professional recording with engineer', fullDayPrice: 500 },
+    { id: 'mixing', name: 'Mixing Session', price: 60, description: 'Professional mixing and production', fullDayPrice: 400 },
+    { id: 'rehearsal', name: 'Rehearsal Space', price: 45, description: 'Band practice and rehearsal', fullDayPrice: 300 }
   ];
 
   // Generate available time slots
@@ -65,7 +65,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
     for (let hour = startHour; hour < endHour; hour++) {
       const time = `${hour.toString().padStart(2, '0')}:00`;
       // Simulate some booked slots
-      const isBooked = Math.random() < 0.3;
+      const isBooked = Math.random() < 0.2; // Reduced booking rate to show more availability
       slots.push({
         time,
         available: !isBooked,
@@ -85,42 +85,77 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
-    setSelectedTime('');
+    setSelectedTimeSlots([]);
+    setIsFullDay(false);
   };
 
-  const handleTimeSelect = (time: string) => {
-    setSelectedTime(time);
+  const handleTimeSlotToggle = (time: string) => {
+    if (isFullDay) return; // Don't allow individual slots when full day is selected
+    
+    setSelectedTimeSlots(prev => {
+      if (prev.includes(time)) {
+        return prev.filter(t => t !== time);
+      } else if (prev.length < 4) { // Max 4 time slots
+        return [...prev, time].sort();
+      } else {
+        toast({
+          title: "Maximum slots reached",
+          description: "You can select up to 4 time slots maximum",
+          variant: "destructive"
+        });
+        return prev;
+      }
+    });
+  };
+
+  const handleFullDayToggle = () => {
+    setIsFullDay(!isFullDay);
+    if (!isFullDay) {
+      setSelectedTimeSlots([]);
+    }
   };
 
   const handleServiceSelect = (serviceId: string) => {
     setSelectedService(serviceId);
     const service = services.find(s => s.id === serviceId);
     if (service) {
+      const price = isFullDay 
+        ? service.fullDayPrice 
+        : service.price * (selectedTimeSlots.length || 1);
+      
       setBookingDetails(prev => ({
         ...prev,
         service: service.name,
-        price: service.price * duration
+        price
       }));
     }
   };
 
-  const handleDurationChange = (newDuration: number) => {
-    setDuration(newDuration);
+  const calculatePrice = () => {
     const service = services.find(s => s.id === selectedService);
-    if (service) {
-      setBookingDetails(prev => ({
-        ...prev,
-        duration: newDuration,
-        price: service.price * newDuration
-      }));
+    if (!service) return 0;
+    
+    if (isFullDay) {
+      return service.fullDayPrice;
     }
+    
+    return service.price * selectedTimeSlots.length;
   };
 
   const proceedToDetails = () => {
-    if (!selectedDate || !selectedTime || !selectedService) {
+    if (!selectedDate || !selectedService) {
       toast({
         title: "Please complete selection",
-        description: "Select date, time, and service to continue",
+        description: "Select date and service to continue",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isFullDay && selectedTimeSlots.length === 0) {
+      toast({
+        title: "Please select time slots",
+        description: "Select at least one time slot or choose full day booking",
         variant: "destructive"
       });
       return;
@@ -129,10 +164,10 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
     const service = services.find(s => s.id === selectedService);
     setBookingDetails({
       date: selectedDate,
-      time: selectedTime,
-      duration,
+      timeSlots: isFullDay ? ['Full Day (9:00 - 22:00)'] : selectedTimeSlots,
+      isFullDay,
       service: service?.name || '',
-      price: (service?.price || 75) * duration,
+      price: calculatePrice(),
       name: '',
       email: '',
       phone: ''
@@ -145,12 +180,32 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
     setIsProcessing(true);
 
     try {
-      // Simulate API call for booking creation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // STRIPE INTEGRATION POINT:
+      // This is where you'll integrate Stripe payment
+      // Replace this section with actual Stripe integration
       
-      // Here you would integrate with Stripe
-      // const response = await createStripeCheckout(bookingDetails);
-      // window.open(response.url, '_blank');
+      // Example Stripe integration (you'll need to implement the backend endpoint):
+      /*
+      const response = await fetch('/api/create-stripe-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bookingDetails,
+          // Add other necessary data
+        }),
+      });
+      
+      const { sessionId } = await response.json();
+      
+      // Redirect to Stripe Checkout
+      const stripe = await loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+      await stripe.redirectToCheckout({ sessionId });
+      */
+      
+      // Simulate API call for now
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       toast({
         title: "Booking Created!",
@@ -186,7 +241,16 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
     for (let i = 0; i < 30; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() + i);
-      dates.push(date.toISOString().split('T')[0]);
+      const dateString = date.toISOString().split('T')[0];
+      
+      // Simulate some days having no bookings (show availability indicator)
+      const hasAvailability = Math.random() > 0.3; // 70% chance of availability
+      
+      dates.push({
+        value: dateString,
+        label: formatDate(dateString),
+        hasAvailability
+      });
     }
     
     return dates;
@@ -195,38 +259,42 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
   if (step === 3) {
     return (
       <div className="text-center py-12">
-        <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-6" />
+        <CheckCircle className="h-16 w-16 text-green-400 mx-auto mb-6" />
         <h3 className="text-2xl font-bold text-white mb-4">Booking Confirmed!</h3>
         <p className="text-gray-300 mb-6">
-          Your session for {formatDate(bookingDetails.date)} at {bookingDetails.time} has been booked.
+          Your session for {formatDate(bookingDetails.date)} has been booked.
           You'll receive a confirmation email shortly.
         </p>
-        <div className="bg-white/5 rounded-lg p-6 max-w-md mx-auto mb-6">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 max-w-md mx-auto mb-6">
           <h4 className="text-white font-semibold mb-4">Booking Summary</h4>
           <div className="space-y-2 text-sm text-gray-300">
             <div className="flex justify-between">
               <span>Service:</span>
-              <span>{bookingDetails.service}</span>
+              <span className="text-white">{bookingDetails.service}</span>
             </div>
             <div className="flex justify-between">
               <span>Date:</span>
-              <span>{formatDate(bookingDetails.date)}</span>
+              <span className="text-white">{formatDate(bookingDetails.date)}</span>
             </div>
             <div className="flex justify-between">
               <span>Time:</span>
-              <span>{bookingDetails.time}</span>
+              <span className="text-white">
+                {bookingDetails.isFullDay 
+                  ? 'Full Day (9:00 - 22:00)' 
+                  : bookingDetails.timeSlots.join(', ')
+                }
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span>Duration:</span>
-              <span>{bookingDetails.duration} hour(s)</span>
-            </div>
-            <div className="flex justify-between font-semibold border-t border-white/10 pt-2">
+            <div className="flex justify-between font-semibold border-t border-slate-600 pt-2">
               <span>Total:</span>
-              <span>${bookingDetails.price}</span>
+              <span className="text-primary">${bookingDetails.price}</span>
             </div>
           </div>
         </div>
-        <Button onClick={onClose} className="bg-primary hover:bg-primary/90 text-black">
+        <Button 
+          onClick={onClose} 
+          className="bg-primary hover:bg-primary/90 text-black font-semibold"
+        >
           Close
         </Button>
       </div>
@@ -238,7 +306,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
           <h3 className="text-xl font-bold text-white mb-2">Booking Details</h3>
-          <div className="bg-white/5 rounded-lg p-4">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-400">Service:</span>
@@ -250,7 +318,12 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
               </div>
               <div>
                 <span className="text-gray-400">Time:</span>
-                <span className="text-white ml-2">{bookingDetails.time}</span>
+                <span className="text-white ml-2">
+                  {bookingDetails.isFullDay 
+                    ? 'Full Day (9:00 - 22:00)' 
+                    : bookingDetails.timeSlots.join(', ')
+                  }
+                </span>
               </div>
               <div>
                 <span className="text-gray-400">Total:</span>
@@ -270,7 +343,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
                 required
                 value={bookingDetails.name}
                 onChange={(e) => setBookingDetails(prev => ({ ...prev, name: e.target.value }))}
-                className="bg-white/5 border-white/10 text-white"
+                className="bg-slate-800 border-slate-600 text-white placeholder:text-gray-400 focus:border-primary"
                 placeholder="Your full name"
               />
             </div>
@@ -282,7 +355,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
                 required
                 value={bookingDetails.email}
                 onChange={(e) => setBookingDetails(prev => ({ ...prev, email: e.target.value }))}
-                className="bg-white/5 border-white/10 text-white"
+                className="bg-slate-800 border-slate-600 text-white placeholder:text-gray-400 focus:border-primary"
                 placeholder="your@email.com"
               />
             </div>
@@ -296,7 +369,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
               required
               value={bookingDetails.phone}
               onChange={(e) => setBookingDetails(prev => ({ ...prev, phone: e.target.value }))}
-              className="bg-white/5 border-white/10 text-white"
+              className="bg-slate-800 border-slate-600 text-white placeholder:text-gray-400 focus:border-primary"
               placeholder="(555) 123-4567"
             />
           </div>
@@ -306,14 +379,14 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
               type="button"
               variant="outline"
               onClick={() => setStep(1)}
-              className="border-white/20 text-white hover:bg-white/10"
+              className="border-slate-600 text-white hover:bg-slate-800 hover:text-white"
             >
               Back
             </Button>
             <Button
               type="submit"
               disabled={isProcessing}
-              className="bg-primary hover:bg-primary/90 text-black flex-1"
+              className="bg-primary hover:bg-primary/90 text-black flex-1 font-semibold"
             >
               {isProcessing ? (
                 <>
@@ -344,14 +417,17 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
               key={service.id}
               className={`cursor-pointer transition-all duration-300 ${
                 selectedService === service.id
-                  ? 'bg-primary/20 border-primary'
-                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+                  ? 'bg-primary/20 border-primary ring-2 ring-primary/50'
+                  : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800/70 hover:border-slate-600'
               }`}
               onClick={() => handleServiceSelect(service.id)}
             >
               <CardHeader className="pb-2">
                 <CardTitle className="text-white text-lg">{service.name}</CardTitle>
-                <div className="text-2xl font-bold text-primary">${service.price}/hr</div>
+                <div className="space-y-1">
+                  <div className="text-xl font-bold text-primary">${service.price}/hr</div>
+                  <div className="text-sm text-gray-400">Full day: ${service.fullDayPrice}</div>
+                </div>
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-gray-300">
@@ -363,78 +439,124 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onClose }) => {
         </div>
       </div>
 
-      {/* Duration Selection */}
-      {selectedService && (
-        <div>
-          <Label className="text-white text-lg mb-3 block">Duration</Label>
-          <Select value={duration.toString()} onValueChange={(value) => handleDurationChange(parseInt(value))}>
-            <SelectTrigger className="bg-white/5 border-white/10 text-white">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[1, 2, 3, 4, 5, 6].map((hours) => (
-                <SelectItem key={hours} value={hours.toString()}>
-                  {hours} hour{hours > 1 ? 's' : ''} - ${(services.find(s => s.id === selectedService)?.price || 75) * hours}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
       {/* Date Selection */}
       <div>
         <Label className="text-white text-lg mb-3 block">Select Date</Label>
         <Select value={selectedDate} onValueChange={handleDateSelect}>
-          <SelectTrigger className="bg-white/5 border-white/10 text-white">
+          <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
             <SelectValue placeholder="Choose a date" />
           </SelectTrigger>
-          <SelectContent>
-            {generateDateOptions().map((date) => (
-              <SelectItem key={date} value={date}>
-                {formatDate(date)}
+          <SelectContent className="bg-slate-800 border-slate-600">
+            {generateDateOptions().map((dateOption) => (
+              <SelectItem 
+                key={dateOption.value} 
+                value={dateOption.value}
+                className="text-white hover:bg-slate-700"
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span>{dateOption.label}</span>
+                  <span className={`ml-2 text-xs px-2 py-1 rounded ${
+                    dateOption.hasAvailability 
+                      ? 'bg-green-900 text-green-300' 
+                      : 'bg-red-900 text-red-300'
+                  }`}>
+                    {dateOption.hasAvailability ? 'Available' : 'Limited'}
+                  </span>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Time Selection */}
-      {selectedDate && (
-        <div>
-          <Label className="text-white text-lg mb-3 block">Available Times</Label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-60 overflow-y-auto">
-            {timeSlots.map((slot) => (
-              <Button
-                key={slot.time}
-                variant={selectedTime === slot.time ? "default" : "outline"}
-                disabled={!slot.available}
-                onClick={() => handleTimeSelect(slot.time)}
-                className={`h-12 ${
-                  selectedTime === slot.time
-                    ? 'bg-primary text-black hover:bg-primary/90'
-                    : slot.available
-                    ? 'border-white/20 text-white hover:bg-white/10'
-                    : 'border-white/10 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                <div className="text-center">
-                  <div className="font-semibold">{slot.time}</div>
-                  {slot.available && <div className="text-xs opacity-75">${slot.price}/hr</div>}
-                  {!slot.available && <div className="text-xs">Booked</div>}
-                </div>
-              </Button>
-            ))}
+      {/* Full Day Option */}
+      {selectedDate && selectedService && (
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-white font-semibold">Full Day Booking</h4>
+              <p className="text-gray-400 text-sm">Book the entire day (9:00 AM - 10:00 PM)</p>
+              <p className="text-primary font-semibold">
+                ${services.find(s => s.id === selectedService)?.fullDayPrice}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant={isFullDay ? "default" : "outline"}
+              onClick={handleFullDayToggle}
+              className={isFullDay 
+                ? "bg-primary text-black hover:bg-primary/90" 
+                : "border-slate-600 text-white hover:bg-slate-700"
+              }
+            >
+              {isFullDay ? 'Full Day Selected' : 'Select Full Day'}
+            </Button>
           </div>
         </div>
       )}
 
+      {/* Time Selection */}
+      {selectedDate && selectedService && !isFullDay && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <Label className="text-white text-lg">Select Time Slots</Label>
+            <div className="text-sm text-gray-400">
+              Selected: {selectedTimeSlots.length}/4 slots
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-60 overflow-y-auto">
+            {timeSlots.map((slot) => {
+              const isSelected = selectedTimeSlots.includes(slot.time);
+              return (
+                <Button
+                  key={slot.time}
+                  variant="outline"
+                  disabled={!slot.available}
+                  onClick={() => handleTimeSlotToggle(slot.time)}
+                  className={`h-16 relative transition-all ${
+                    isSelected
+                      ? 'bg-primary text-black border-primary hover:bg-primary/90'
+                      : slot.available
+                      ? 'border-slate-600 text-white hover:bg-slate-800 hover:border-slate-500'
+                      : 'border-slate-700 text-gray-500 cursor-not-allowed bg-slate-900'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="font-semibold">{slot.time}</div>
+                    {slot.available && <div className="text-xs opacity-75">${slot.price}/hr</div>}
+                    {!slot.available && <div className="text-xs">Booked</div>}
+                    {isSelected && (
+                      <div className="absolute -top-1 -right-1 bg-green-400 text-black rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                        ✓
+                      </div>
+                    )}
+                  </div>
+                </Button>
+              );
+            })}
+          </div>
+          
+          {selectedTimeSlots.length > 0 && (
+            <div className="mt-4 p-3 bg-slate-800/50 border border-slate-700 rounded-lg">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-400">Selected slots:</span>
+                <span className="text-white">{selectedTimeSlots.join(', ')}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm mt-1">
+                <span className="text-gray-400">Total price:</span>
+                <span className="text-primary font-semibold">${calculatePrice()}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Continue Button */}
-      {selectedDate && selectedTime && selectedService && (
-        <div className="flex justify-end pt-6 border-t border-white/10">
+      {selectedDate && selectedService && (isFullDay || selectedTimeSlots.length > 0) && (
+        <div className="flex justify-end pt-6 border-t border-slate-700">
           <Button
             onClick={proceedToDetails}
-            className="bg-primary hover:bg-primary/90 text-black px-8"
+            className="bg-primary hover:bg-primary/90 text-black px-8 font-semibold"
           >
             Continue to Details
           </Button>
