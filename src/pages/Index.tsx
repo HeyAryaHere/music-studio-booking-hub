@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import BookingCalendar from '@/components/BookingCalendar';
 import AdminPanel from '@/components/AdminPanel';
+import AdminLogin from '@/components/AdminLogin';
 import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
   const [showBooking, setShowBooking] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const { toast } = useToast();
 
   const studioFeatures = [
@@ -55,6 +57,15 @@ const Index = () => {
     }
   ];
 
+  const handleAdminLogin = () => {
+    setIsAdminLoggedIn(true);
+  };
+
+  const handleAdminClose = () => {
+    setShowAdmin(false);
+    setIsAdminLoggedIn(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
@@ -66,18 +77,20 @@ const Index = () => {
               <h1 className="text-2xl font-bold text-white">SoundStudio Pro</h1>
             </div>
             <nav className="hidden md:flex items-center space-x-6">
-              <button 
+              <Button 
                 onClick={() => setShowBooking(true)}
-                className="text-white hover:text-primary transition-colors"
+                variant="ghost"
+                className="text-white hover:text-primary hover:bg-white/10 transition-colors"
               >
                 Book Now
-              </button>
-              <button 
+              </Button>
+              <Button 
                 onClick={() => setShowAdmin(true)}
-                className="text-white hover:text-primary transition-colors"
+                variant="ghost"
+                className="text-white hover:text-primary hover:bg-white/10 transition-colors"
               >
                 Admin
-              </button>
+              </Button>
             </nav>
           </div>
         </div>
@@ -115,7 +128,7 @@ const Index = () => {
               <Button 
                 size="lg" 
                 variant="outline"
-                className="border-white/20 text-white hover:bg-white/10 px-8 py-4 rounded-lg transition-all duration-300"
+                className="border-white/30 text-white hover:bg-white/10 hover:border-white/50 px-8 py-4 rounded-lg transition-all duration-300"
               >
                 <Music className="mr-2 h-5 w-5" />
                 View Gallery
@@ -277,7 +290,7 @@ const Index = () => {
               <Button 
                 variant="ghost" 
                 onClick={() => setShowBooking(false)}
-                className="text-white hover:bg-white/10"
+                className="text-white hover:bg-white/10 hover:text-primary"
               >
                 ✕
               </Button>
@@ -294,17 +307,23 @@ const Index = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-auto">
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
+              <h2 className="text-2xl font-bold text-white">
+                {isAdminLoggedIn ? "Admin Panel" : "Admin Access"}
+              </h2>
               <Button 
                 variant="ghost" 
-                onClick={() => setShowAdmin(false)}
-                className="text-white hover:bg-white/10"
+                onClick={handleAdminClose}
+                className="text-white hover:bg-white/10 hover:text-primary"
               >
                 ✕
               </Button>
             </div>
             <div className="p-6">
-              <AdminPanel />
+              {isAdminLoggedIn ? (
+                <AdminPanel />
+              ) : (
+                <AdminLogin onLogin={handleAdminLogin} onClose={handleAdminClose} />
+              )}
             </div>
           </div>
         </div>
